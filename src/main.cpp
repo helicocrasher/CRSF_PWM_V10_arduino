@@ -6,7 +6,6 @@
 
 AlfredoCRSF crsf;
 
-
 static void sendCellVoltage(uint8_t cellId, float voltage);
 void sendBaroAltitude(float altitude, float verticalspd);
 void update_baro_vals(uint32_t millis_now);
