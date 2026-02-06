@@ -6,115 +6,54 @@
 
 AlfredoCRSF crsf;
 
-static void sendCellVoltage(uint8_t cellId, float voltage);
-void sendBaroAltitude(float altitude, float verticalspd);
-void update_baro_vals(uint32_t millis_now);
-void display_baro_vals(uint32_t millis_now);
-void get_I2C_Data(uint8_t I2C_Address,uint8_t device_register  , uint8_t num_bytes,short * indata);
+void setupBaroSensor();
+static void telemetrySendCellVoltage(uint8_t cellId, float voltage);
+void telemetrySendBaroAltitude(float altitude, float verticalspd);
+void baroProcessingTask(uint32_t millis_now);
+void baroSerialDisplayTask(uint32_t millis_now);
+void getI2cData(uint8_t I2C_Address,uint8_t device_register  , uint8_t num_bytes,short * indata);
 
 #ifdef TARGET_BLUEPILL        // and BMP280  sensor
   #include <Adafruit_BMP280.h>
-  
   #define LED_BUILTIN PB2
-  //HardwareSerial Serial1(USART1); // somewhere in arduino already defined for Bluepill
+  //HardwareSerial Serial1(USART1); // somewhere in arduino already defined for the Bluepill board
   HardwareSerial Serial2(USART2);
   HardwareSerial Serial3(USART3);
   #define crsfSerial Serial1
   #define SerialI2CDebug Serial2
-  
-  #define SerialI2CDebug Serial2
-  TwoWire BaroWire(PB9, PB8);
-  Adafruit_BMP280 Baro_Sensor(&BaroWire); // I2C
-  //Adafruit_BMP280 Baro_Sensor(&Wire); // I2C default pins for Wire PB7,PB6
-  
+  #define CRF_SERIAL_TX_PIN PB6  // USART1 TX
+  #define CRF_SERIAL_RX_PIN PB7  // USART1 RX
+  TwoWire BaroWire(PB9, PB8);             // define SDA,SCL pins for BMP280 Baro sensor
+  Adafruit_BMP280 Baro_Sensor(&BaroWire); // 
+#endif  // TARGET_BLUEPILL and BMP280 sensor
 
-
-void setup_BMP280(){
-  SerialI2CDebug.println(F("BMP280 test"));
-  unsigned status;
-  BaroWire.begin();
-  //status = bmp.begin(BMP280_ADDRESS_ALT, BMP280_CHIPID);
-  status = Baro_Sensor.begin(BMP280_ADDRESS_ALT, BMP280_CHIPID);
-  if (!status) {
-    SerialI2CDebug.println(F("Could not find a valid BMP280 sensor, check wiring or "
-                      "try a different address!"));
-    SerialI2CDebug.print("SensorID was: 0x"); SerialI2CDebug.println(Baro_Sensor.sensorID(),16);
-    SerialI2CDebug.print("        ID of 0xFF probably means a bad address, a BMP 180 or BMP 085\n");
-    SerialI2CDebug.print("        ID of 0x56-0x58 represents a BMP 280,\n");
-    SerialI2CDebug.print("        ID of 0x60 represents a BME 280.\n");
-    SerialI2CDebug.print("        ID of 0x61 represents a BME 680.\n");
-    while (1) delay(10);
-  }
-
-  /* Default settings from datasheet. */
-  Baro_Sensor.setSampling(Adafruit_BMP280::MODE_NORMAL,     /* Operating Mode. */
-                  Adafruit_BMP280::SAMPLING_X2,     /* Temp. oversampling */
-                  Adafruit_BMP280::SAMPLING_X16,    /* Pressure oversampling */
-                  Adafruit_BMP280::FILTER_X16,      /* Filtering. */
-                  Adafruit_BMP280::STANDBY_MS_1);   /* Standby time. */
-}
-
-#else      // TARGET_G031G8 and SPL06-001
+#ifdef TARGET_G031G8        // TARGET_G031G8 and SPL06-001
   #include <SPL06-001.h>
   #define LED_BUILTIN PC14
   HardwareSerial Serial1(USART1); 
   HardwareSerial Serial2(USART2);
-
   #define crsfSerial Serial1
   #define SerialI2CDebug Serial2
+  #define CRF_SERIAL_TX_PIN PB6   // USART1 TX
+  #define CRF_SERIAL_RX_PIN PB7   // USART1 RX
+  TwoWire BaroWire(PA12, PA11);   // CRSF PWM V10 SDA,SCL
+  SPL06 Baro_Sensor(&BaroWire);   // 
+#endif
 
-
-//SPL06 Baro_Sensor(&Wire);
-SPL06 Baro_Sensor;
-
-
-void setup_SPL06_001(){
-
-// uint32_t read_data;
-  
-// get_I2C_Data(SPL06_ADDRESS_ALT, 0x0d, 1, (short*) &read_data);
-
-  delay(10);
-  
-  unsigned status = Baro_Sensor.begin(SPL06_ADDRESS_ALT,SPL06_PRODID);
-  //unsigned status = Baro_Sensor.begin(SPL06_ADDRESS_ALT);
-  if (!status) {
-    SerialI2CDebug.println(F("Could not find a valid SPL06-001 sensor, check wiring or "
-                      "try a different address!"));
-    SerialI2CDebug.print("SensorID was:   0x"); SerialI2CDebug.println(Baro_Sensor.sensorID(),HEX); //HEX
-    SerialI2CDebug.print("        ID of 0xFF probably means a bad address, a BMP 180 or BMP 085\n");
-    while (1) delay(10);
-  }
-  Baro_Sensor.setSampling(SPL06::MODE_BACKGND_BOTH,
-                          SPL06::SAMPLING_X16,
-                          SPL06::SAMPLING_X16,
-                          SPL06::RATE_X16,
-                          SPL06::RATE_X16);
-  SerialI2CDebug.println("SPL06-001 ready");
-}
-#endif  // TARGET_G031G8 and SPL06-001
 
 void setup() {
   SerialI2CDebug.begin(115200);
   pinMode(LED_BUILTIN, OUTPUT);
   digitalWrite(LED_BUILTIN, LOW);
   #ifdef TARGET_BLUEPILL
-  
- //   while ( !Serial ) delay(100);   // wait for native usb
-    SerialI2CDebug.println("Setup BMP280 starting");
-    delay(100);    
-    setup_BMP280();
-    delay(100);
-    crsfSerial.setTx(PB6);
-    crsfSerial.setRx(PB7); 
-  #else  
-    SerialI2CDebug.println("Setup SPL06-001 starting");
-    delay(100);
-    setup_SPL06_001();
-    delay(100);
-    crsfSerial.setTx(PB6);
-    crsfSerial.setRx(PB7);
+   // while (!Serial) ;  // wait for serial port to connect. Needed for native USB
   #endif
+  SerialI2CDebug.println("Setup Baro Sensor starting");
+  delay(100);    
+  setupBaroSensor();
+  delay(100);
+  crsfSerial.setTx(CRF_SERIAL_TX_PIN);
+  crsfSerial.setRx(CRF_SERIAL_RX_PIN); 
   delay(100);
   crsfSerial.begin(CRSF_BAUDRATE, SERIAL_8N1);
   crsf.begin(crsfSerial);
@@ -137,11 +76,11 @@ millis_now = millis();
   if(millis_now - millis_last > 250) {
     millis_last = millis_now;
     digitalWrite(LED_BUILTIN, !digitalRead(LED_BUILTIN));
-    sendCellVoltage(1, 4.11);
-    sendBaroAltitude(filt_alt_AGL, filt_vario);
+    telemetrySendCellVoltage(1, 4.11);
+    telemetrySendBaroAltitude(filt_alt_AGL, filt_vario);
   }
-  update_baro_vals(millis_now);
-  display_baro_vals(millis_now);
+  baroProcessingTask(millis_now);
+  baroSerialDisplayTask(millis_now);
   if (millis_now-crsf_last_update > 1) {
     crsf.update();
     crsf_last_update = millis_now;
@@ -149,7 +88,7 @@ millis_now = millis();
   main_loop_counter++;
 }
 
-void display_baro_vals(uint32_t millis_now){
+void baroSerialDisplayTask(uint32_t millis_now){
   static uint32_t last_millis=0;
   if (millis_now - last_millis < 500) return;
   last_millis = millis_now;
@@ -171,7 +110,7 @@ void display_baro_vals(uint32_t millis_now){
 }
 
 
-void update_baro_vals(uint32_t millis_now){
+void baroProcessingTask(uint32_t millis_now){
   float altitude;
   static uint32_t last_millis=0,loop_counter=0;
   if (millis_now - last_millis < 50) return;
@@ -212,7 +151,7 @@ void bla(uint32_t millis_now){
 
 #define CRSF_BATTERY_SENSOR_CELLS_MAX 12
 
-void sendCellVoltage(uint8_t cellId, float voltage) {
+void telemetrySendCellVoltage(uint8_t cellId, float voltage) {
   if (cellId < 1 || cellId > CRSF_BATTERY_SENSOR_CELLS_MAX)     return;
 
   uint8_t payload[3];
@@ -222,7 +161,7 @@ void sendCellVoltage(uint8_t cellId, float voltage) {
   crsf.queuePacket(CRSF_SYNC_BYTE, 0x0e, payload, sizeof(payload));
 }
 
-void sendBaroAltitude(float altitude, float verticalspd)
+void telemetrySendBaroAltitude(float altitude, float verticalspd)
 {
   crsf_sensor_baro_altitude_t crsfBaroAltitude = { 0 };
 
@@ -241,7 +180,7 @@ void sendBaroAltitude(float altitude, float verticalspd)
 }
 
 
-void get_I2C_Data(uint8_t I2C_Address,uint8_t device_register  , uint8_t num_bytes,short * indata) {
+void getI2cData(uint8_t I2C_Address,uint8_t device_register  , uint8_t num_bytes,short * indata) {
   uint8_t bytes_read;
   Wire.begin();  
   Wire.setClock(100000);
@@ -257,3 +196,68 @@ void get_I2C_Data(uint8_t I2C_Address,uint8_t device_register  , uint8_t num_byt
   SerialI2CDebug.print(" SensorID = ");
   SerialI2CDebug.println(*indata,HEX);
 }
+
+#ifdef TARGET_BLUEPILL  // BMP280 sensor
+//#define BMP280_ADDRESS_ALT 0x76
+//#define BMP280_CHIPID 0x58
+
+void setupBaroSensor(){   // BMP280 sensor version
+  SerialI2CDebug.println(F("BMP280 test"));
+  unsigned status;
+  BaroWire.begin();
+  //status = bmp.begin(BMP280_ADDRESS_ALT, BMP280_CHIPID);
+  status = Baro_Sensor.begin(BMP280_ADDRESS_ALT, BMP280_CHIPID);
+  if (!status) {
+    SerialI2CDebug.println(F("Could not find a valid BMP280 sensor, check wiring or "
+                      "try a different address!"));
+    SerialI2CDebug.print("SensorID was: 0x"); SerialI2CDebug.println(Baro_Sensor.sensorID(),16);
+    SerialI2CDebug.print("        ID of 0xFF probably means a bad address, a BMP 180 or BMP 085\n");
+    SerialI2CDebug.print("        ID of 0x56-0x58 represents a BMP 280,\n");
+    SerialI2CDebug.print("        ID of 0x60 represents a BME 280.\n");
+    SerialI2CDebug.print("        ID of 0x61 represents a BME 680.\n");
+    while (1) delay(10);
+  }
+
+  /* Default settings from datasheet. */
+  Baro_Sensor.setSampling(Adafruit_BMP280::MODE_NORMAL,     /* Operating Mode. */
+                  Adafruit_BMP280::SAMPLING_X2,     /* Temp. oversampling */
+                  Adafruit_BMP280::SAMPLING_X16,    /* Pressure oversampling */
+                  Adafruit_BMP280::FILTER_X16,      /* Filtering. */
+                  Adafruit_BMP280::STANDBY_MS_1);   /* Standby time. */
+}
+
+#endif  // TARGET_BLUEPILL  and BMP280 sensor
+
+#ifdef TARGET_G031G8  // SPL06-001 sensor
+//#define SPL06_ADDRESS_ALT 0x76
+//#define SPL06_PRODID 0x10
+
+
+void setupBaroSensor(){   // SPL06-001 sensor version 
+  SerialI2CDebug.println(F("SPL06-001 test"));
+  unsigned status;
+  BaroWire.begin();
+
+// uint32_t read_data;
+// getI2cData(SPL06_ADDRESS_ALT, 0x0d, 1, (short*) &read_data);
+
+  delay(10);
+  
+  status = Baro_Sensor.begin(SPL06_ADDRESS_ALT,SPL06_PRODID);
+  //unsigned status = Baro_Sensor.begin(SPL06_ADDRESS_ALT);
+  if (!status) {
+    SerialI2CDebug.println(F("Could not find a valid SPL06-001 sensor, check wiring or "
+                      "try a different address!"));
+    SerialI2CDebug.print("SensorID was:   0x"); SerialI2CDebug.println(Baro_Sensor.sensorID(),HEX); //HEX
+    SerialI2CDebug.print("        ID of 0xFF probably means a bad address, a BMP 180 or BMP 085\n");
+    while (1) delay(10);
+  }
+  Baro_Sensor.setSampling(SPL06::MODE_BACKGND_BOTH,
+                          SPL06::SAMPLING_X16,
+                          SPL06::SAMPLING_X16,
+                          SPL06::RATE_X16,
+                          SPL06::RATE_X16);
+  SerialI2CDebug.println("SPL06-001 ready");
+}
+#endif  // TARGET_G031G8 and SPL06-001
+
