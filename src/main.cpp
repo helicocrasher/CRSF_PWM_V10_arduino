@@ -27,7 +27,7 @@ void getI2cData(uint8_t I2C_Address,uint8_t device_register  , uint8_t num_bytes
   Adafruit_BMP280 Baro_Sensor(&BaroWire); // 
 #endif  // TARGET_BLUEPILL and BMP280 sensor
 
-#ifdef TARGET_G031G8        // TARGET_G031G8 and SPL06-001
+#ifdef TARGET_MATEK_CRSF_PWM_V10        // TARGET_MATEK_CRSF_PWM_V10 with SPL06-001
   #include <SPL06-001.h>
   #define LED_BUILTIN PC14
   HardwareSerial Serial1(USART1); 
@@ -228,7 +228,7 @@ void setupBaroSensor(){   // BMP280 sensor version
 
 #endif  // TARGET_BLUEPILL  and BMP280 sensor
 
-#ifdef TARGET_G031G8  // SPL06-001 sensor
+#ifdef TARGET_MATEK_CRSF_PWM_V10  // with SPL06-001 sensor
 //#define SPL06_ADDRESS_ALT 0x76
 //#define SPL06_PRODID 0x10
 
@@ -259,5 +259,5 @@ void setupBaroSensor(){   // SPL06-001 sensor version
                           SPL06::RATE_X16);
   SerialI2CDebug.println("SPL06-001 ready");
 }
-#endif  // TARGET_G031G8 and SPL06-001
+#endif  // TARGET_MATEK_CRSF_PWM_V10 with SPL06-001
 
