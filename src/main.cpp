@@ -129,7 +129,7 @@ void baroProcessingTask(uint32_t millis_now){
     filt_alt_ASL = (IIR_ALPHA * altitude) + (IIR_BETA * filt_alt_ASL);
   }
   filt_alt_AGL =filt_alt_ASL - (GND_altitude / GND_alt_count);
-  vario=(previous_alt_ASL - filt_alt_AGL)*20;
+  vario=(filt_alt_AGL-previous_alt_ASL)*20;
   filt_vario = (IIR_ALPHA * vario) + (IIR_BETA * filt_vario);
   previous_alt_ASL = filt_alt_AGL;
   loop_counter++;
