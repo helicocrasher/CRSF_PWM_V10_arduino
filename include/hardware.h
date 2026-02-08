@@ -2,7 +2,8 @@
 
 #ifdef TARGET_BLUEPILL
   #define LED_BUILTIN PB2
-  //HardwareSerial Serial1(USART1); // PB6, PB7, TX, RX
+  #define LED_ACTIVE_LOW false
+  //HardwareSerial Serial1(USART1); // PB6, PB7, TX, RX - commented out as already defined in arduino variant file and redefinition causes compile error
   HardwareSerial Serial2(USART2); // PA2, PA3, TX, RX
   HardwareSerial Serial3(USART3); // PB10, PB11 TX, RX
   #define SERIAL1_TX PB6
@@ -16,11 +17,13 @@
   #define SDA1 PB9
   #define SCL1 PB8
 
+  #define TIMER_PRESCALER 72  // 72MHZ STM32 clock div 72 --> timer clock 1MHz
   #endif
 
 
 #ifdef TARGET_MATEK_CRSF_PWM_V10
   #define LED_BUILTIN PC14
+  #define LED_ACTIVE_LOW true
   HardwareSerial Serial1(USART1); // PB6, PB7, TX, RX
   HardwareSerial Serial2(USART2); // PA2, PA3 TX, RX
   #define SERIAL1_TX PB6
@@ -31,6 +34,8 @@
   uint32_t PWM_Tim_Pin_Map[10] = {PA0,PA1,PB8,PC6,PB1_ALT1,PB0_ALT1,PA7,PA6,PA8,PB3}; // Pins used for PWM outputs 1..10 for some reason PB0 is conflicting with PA8 and  PA7 with PB3
   #define SDA1 PA12
   #define SCL1 PA11
+
+  #define TIMER_PRESCALER 64  // 64MHZ STM32 clock div 64 --> timer clock 1MHz
 #endif
 
 

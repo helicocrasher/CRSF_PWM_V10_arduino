@@ -21,8 +21,8 @@ void baroSerialDisplayTask(uint32_t millis_now);
 void getI2cData(uint8_t I2C_Address,uint8_t device_register  , uint8_t num_bytes,short * indata);
 void printChannels();
 
-  #define STRING_BUFFER_SIZE 120
-  char stringBuffer[STRING_BUFFER_SIZE]={0};
+#define STRING_BUFFER_SIZE 120
+char stringBuffer[STRING_BUFFER_SIZE]={0};
 
 #if !defined(STM32_CORE_VERSION) || (STM32_CORE_VERSION  < 0x01090000)
 #error "Due to API change, this sketch is compatible with STM32_CORE_VERSION  >= 0x01090000"
@@ -30,49 +30,37 @@ void printChannels();
 
 #ifdef TARGET_BLUEPILL        // and BMP280  sensor
   #include <Adafruit_BMP280.h>
-  #include "SparkFun_u-blox_GNSS_Arduino_Library.h" 
-
+  Adafruit_BMP280 BaroSensor(&BaroWire); // 
   #define SerialDebug Serial2
-//  #define SerialI2CDebug NullSerial  
-  #define SerialI2CDebug Serial2
-  #define GNSSSerialDebug Serial2
-#ifdef Serial 
-  #undef Serial
-  #define Serial SerialDebug
-#endif 
- 
-  #define gnssSerial Serial3
+  #define SerialI2CDebug SerialDebug
 
+  #define GNSSSerialDebug SerialDebug
+  #define gnssSerial Serial3
   #define GNSS_SERIAL Serial3
   #define GNSS_SERIAL_TX_PIN SERIAL3_TX  // USART3 TX
   #define GNSS_SERIAL_RX_PIN SERIAL3_RX  // USART3 RX
   uint8_t BaudRateIndex=0;
   #define NR_OF_GNSS_baudrates 5
   const uint32_t possibleBauds[NR_OF_GNSS_baudrates] = { 115200, 57600, 38400, 19200, 9600 };
-             // define SDA,SCL pins for BMP280 Baro sensor
-  Adafruit_BMP280 BaroSensor(&BaroWire); // 
+  #include "SparkFun_u-blox_GNSS_Arduino_Library.h" 
   SFE_UBLOX_GNSS myGNSS;
   bool autoBaudGNSS(void);
   void sendGps_int(int32_t latitude, int32_t longitude, int32_t groundspeed, int32_t heading, int32_t altitude, uint8_t satellites);
   void printGNSS(void);
   bool GNSS_available=false;
-
   #define mmsTokmh 278          // conversion factor from mm/s to km/h
   #define NR_OF_PWM_OUT 8
-  //uint32_t PWM_Tim_Pin_Map[NR_OF_PWM_OUT] = {PA0,PA1,PB10,PB11,PA6,PA7_ALT1,PB0_ALT1,PB1_ALT1};
-  #define TIMER_PRESCALER 72    // 72MHZ STM32 clock div 72 --> timer clock 1MHz
-  #define PWM_PERIOD_US 20000   // 20ms period for 50Hz
 #endif  // TARGET_BLUEPILL and BMP280 sensor
 
 #ifdef TARGET_MATEK_CRSF_PWM_V10        // TARGET_MATEK_CRSF_PWM_V10 with SPL06-001
   #include <SPL06-001.h>
-
-
-  #define SerialI2CDebug Serial2
-
+  #define SerialDebug Serial2
+  #define SerialI2CDebug SerialDebug
   SPL06 BaroSensor(&BaroWire);   // 
-#endif
+  #define NR_OF_PWM_OUT 10
+#endif // end TARGET_MATEK_CRSF_PWM_V10 with SPL06-001 
 
+#define PWM_PERIOD_US 20000   // 20ms period for 50Hz
 #define crsfSerial Serial1
 #define CRSF_SERIAL_TX_PIN SERIAL1_TX
 #define CRSF_SERIAL_RX_PIN SERIAL1_RX
@@ -83,11 +71,12 @@ HardwareTimer *My_PWM_Out_Tim[NR_OF_PWM_OUT];
 void setup() {
   SerialDebug.begin(115200);
   pinMode(LED_BUILTIN, OUTPUT);
-  digitalWrite(LED_BUILTIN, LOW);
+  digitalWrite(LED_BUILTIN, HIGH^LED_ACTIVE_LOW); // turn on built in LED to indicate setup is running
   #ifdef TARGET_BLUEPILL
-  while (!Serial) ; // wait for serial port to connect. Needed for native USB
+//  while (!Serial) ; // wait for serial port to connect. Needed for native USB
   #endif
   SerialI2CDebug.println("Setup Baro Sensor starting");
+  while (true);
   delay(100);    
   setupBaroSensor();
   delay(100);
@@ -104,7 +93,8 @@ void setup() {
     myGNSS.setMeasurementRate(250);     // Set the GNSS module to 1 second (1000 ms) measurement rate
     myGNSS.saveConfiguration();
     myGNSS.setAutoPVT(true);            // Enable automatic PVT data messages
-    myGNSS.enableDebugging();           // Uncomment this line to enable helpful debug messages on Serial
+//    myGNSS.enableDebugging();           // Uncomment this line to enable helpful debug messages on Serial
+    myGNSS.disableDebugging();           // comment this line to enable helpful debug messages on Serial
     myGNSS.setUART1Output(COM_TYPE_UBX); //Set the UART1 port to output UBX only (turn off NMEA noise)
   }
   #endif
@@ -140,24 +130,16 @@ static uint32_t millis_now=0, millis_last=0,main_loop_counter=0,crsf_last_update
     if(GNSS_available) {
       sendGps_int(myGNSS.getLatitude(), myGNSS.getLongitude(), myGNSS.getGroundSpeed()/mmsTokmh, myGNSS.getHeading(), myGNSS.getAltitudeMSL()/1000, myGNSS.getSIV());
       printGNSS();
-
     }
-#endif
   }
+  if(GNSS_available) myGNSS.getPVT();
+#else
+  }  
+#endif
   baroProcessingTask(millis_now);
   baroSerialDisplayTask(millis_now);
-
-  if (millis_now-crsf_last_update > 10){
-#ifdef TARGET_BLUEPILL
-    if(GNSS_available) myGNSS.getPVT();
-    crsf_last_update = millis_now;
-#endif
-  }
-  if (true){
-    crsf.update();
-    setPWMChannels();
-
-  }
+  crsf.update();
+  setPWMChannels();
   delay(1);  // just to avoid a tight loop, not really needed
   main_loop_counter++;
 }
@@ -362,15 +344,12 @@ bool autoBaudGNSS(void)
   gnssSerial.setTx(GNSS_SERIAL_TX_PIN);
   gnssSerial.setRx(GNSS_SERIAL_RX_PIN);
   gnssSerial.begin(possibleBauds[BaudRateIndex]);
-  myGNSS.disableDebugging(); // Disable debug messages on Serial  
-//  myGNSS.enableDebugging(); // Uncomment this line to enable helpful debug messages on Serial
   GNSS_Connected = myGNSS.begin(gnssSerial);
   while ((BaudRateIndex < 4) && ! GNSS_Connected) //Connect to the u-blox module using gnssSerial (defined above)
   {
     delay (5);
-   
     BaudRateIndex++;
-  //  BaudRateIndex = BaudRateIndex % 5;    
+    BaudRateIndex = BaudRateIndex % 5;    
     GNSSSerialDebug.print(BaudRateIndex);
     GNSSSerialDebug.print((" : Attempting to connect to GNSS module with "));
     GNSSSerialDebug.println(possibleBauds[BaudRateIndex %5]);
