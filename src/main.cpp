@@ -1,6 +1,7 @@
 #include <arduino.h>
 #include <Wire.h>
 #include <SPI.h>
+#include <NullSerial.h>
 
 #include <AlfredoCRSF.h>
 
@@ -15,16 +16,33 @@ void getI2cData(uint8_t I2C_Address,uint8_t device_register  , uint8_t num_bytes
 
 #ifdef TARGET_BLUEPILL        // and BMP280  sensor
   #include <Adafruit_BMP280.h>
+  #include "SparkFun_u-blox_GNSS_Arduino_Library.h" 
   #define LED_BUILTIN PB2
   //HardwareSerial Serial1(USART1); // somewhere in arduino already defined for the Bluepill board
   HardwareSerial Serial2(USART2);
   HardwareSerial Serial3(USART3);
   #define crsfSerial Serial1
   #define SerialI2CDebug Serial2
+  #define GNSSSerialDebug Serial2
+  #define gnssSerial Serial3
   #define CRF_SERIAL_TX_PIN PB6  // USART1 TX
   #define CRF_SERIAL_RX_PIN PB7  // USART1 RX
+  #define GNSS_SERIAL Serial3
+  #define GNSS_SERIAL_TX_PIN PB10  // USART3 TX
+  #define GNSS_SERIAL_RX_PIN PB11  // USART3 RX
+  uint8_t BaudRateIndex=0;
+  #define NR_OF_GNSS_baudrates 5
+  const uint32_t possibleBauds[NR_OF_GNSS_baudrates] = { 115200, 57600, 38400, 19200, 9600 };
   TwoWire BaroWire(PB9, PB8);             // define SDA,SCL pins for BMP280 Baro sensor
   Adafruit_BMP280 Baro_Sensor(&BaroWire); // 
+  SFE_UBLOX_GNSS myGNSS;
+  bool autoBaudGNSS(void);
+  void sendGps_int(int32_t latitude, int32_t longitude, int32_t groundspeed, int32_t heading, int32_t altitude, uint8_t satellites);
+  void printGNSS(void);
+  bool GNSS_available=false;
+#define STRING_BUFFER_SIZE 120
+  char stringBuffer[STRING_BUFFER_SIZE]={0};
+  #define mmsTokmh 278        // conversion factor from mm/s to km/h
 #endif  // TARGET_BLUEPILL and BMP280 sensor
 
 #ifdef TARGET_MATEK_CRSF_PWM_V10        // TARGET_MATEK_CRSF_PWM_V10 with SPL06-001
@@ -57,6 +75,10 @@ void setup() {
   delay(100);
   crsfSerial.begin(CRSF_BAUDRATE, SERIAL_8N1);
   crsf.begin(crsfSerial);
+  delay(100);
+#ifdef TARGET_BLUEPILL
+  GNSS_available = autoBaudGNSS();
+#endif
 }
 
 #define IIR_ALPHA   0.135755f  // 0.5Hz cut off (fc/40 / fc=Hz /Tc=320ms)
@@ -72,25 +94,36 @@ void loop() {
 
 static uint32_t millis_now=0, millis_last=0,main_loop_counter=0,crsf_last_update=0;
 
-millis_now = millis();
+  millis_now = millis();
   if(millis_now - millis_last > 250) {
     millis_last = millis_now;
     digitalWrite(LED_BUILTIN, !digitalRead(LED_BUILTIN));
     telemetrySendCellVoltage(1, 4.11);
     telemetrySendBaroAltitude(filt_alt_AGL, filt_vario);
+#ifdef TARGET_BLUEPILL  
+    if(GNSS_available) {
+      sendGps_int(myGNSS.getLatitude(), myGNSS.getLongitude(), myGNSS.getGroundSpeed()/mmsTokmh, myGNSS.getHeading(), myGNSS.getAltitudeMSL()/1000, myGNSS.getSIV());
+      printGNSS();
+    }
+#endif
   }
   baroProcessingTask(millis_now);
   baroSerialDisplayTask(millis_now);
-  if (millis_now-crsf_last_update > 1) {
+
+//  if (millis_now-crsf_last_update > 0){
+  if (true){
     crsf.update();
     crsf_last_update = millis_now;
   }
+#ifdef TARGET_BLUEPILL
+  if(GNSS_available) myGNSS.getPVT();
+#endif
   main_loop_counter++;
 }
 
 void baroSerialDisplayTask(uint32_t millis_now){
   static uint32_t last_millis=0;
-  if (millis_now - last_millis < 500) return;
+  if (millis_now - last_millis < 250) return;
   last_millis = millis_now;
   SerialI2CDebug.print(F("Temperature = "));
   SerialI2CDebug.print(Baro_Sensor.readTemperature());
@@ -226,6 +259,118 @@ void setupBaroSensor(){   // BMP280 sensor version
                   Adafruit_BMP280::STANDBY_MS_1);   /* Standby time. */
 }
 
+
+bool autoBaudGNSS(void)
+{ 
+  bool GNSS_Connected = false;
+
+  GNSSSerialDebug.print(("0 : Attempting to connect to GNSS module with "));
+  GNSSSerialDebug.println(possibleBauds[BaudRateIndex]);
+  gnssSerial.setTx(GNSS_SERIAL_TX_PIN);
+  gnssSerial.setRx(GNSS_SERIAL_RX_PIN);
+  gnssSerial.begin(possibleBauds[BaudRateIndex]);
+  myGNSS.disableDebugging(); // Disable debug messages on Serial  
+//  myGNSS.enableDebugging(); // Uncomment this line to enable helpful debug messages on Serial
+  GNSS_Connected = myGNSS.begin(gnssSerial);
+  while ((BaudRateIndex < 4) && ! GNSS_Connected) //Connect to the u-blox module using gnssSerial (defined above)
+  {
+    delay (5);
+   
+    BaudRateIndex++;
+  //  BaudRateIndex = BaudRateIndex % 5;    
+    GNSSSerialDebug.print(BaudRateIndex);
+    GNSSSerialDebug.print((" : Attempting to connect to GNSS module with "));
+    GNSSSerialDebug.println(possibleBauds[BaudRateIndex %5]);
+    gnssSerial.begin(possibleBauds[BaudRateIndex%5]);
+    GNSS_Connected=myGNSS.begin(gnssSerial);
+  }
+  if (GNSS_Connected){
+    GNSSSerialDebug.print(("Connected to GNSS module at "));
+    GNSSSerialDebug.print(possibleBauds[BaudRateIndex%5]);
+    GNSSSerialDebug.println((" baud."));
+    if (BaudRateIndex != 0){
+      BaudRateIndex = 0; // We want to set back to 115200
+      myGNSS.setSerialRate(possibleBauds[BaudRateIndex]); // Set u-blox module to 115200 baud for reconnect
+      gnssSerial.begin(possibleBauds[BaudRateIndex]);
+      GNSSSerialDebug.print(("Reconnected to GNSS module at "));
+      GNSSSerialDebug.print(possibleBauds[BaudRateIndex]);
+      GNSSSerialDebug.println((" baud."));
+    }
+    return true;
+  }
+  else {
+    GNSSSerialDebug.println("GNSS Timeout -- Not Connected");
+    return false;  
+  }
+}
+
+void sendGps_int(int32_t latitude, int32_t longitude, int32_t groundspeed, int32_t heading, int32_t altitude, uint8_t satellites) {
+  crsf_sensor_gps_t crsfGps = { 0 };
+
+  // Values are MSB first (BigEndian)
+  crsfGps.latitude = htobe32(latitude);
+  crsfGps.longitude = htobe32(longitude);
+  crsfGps.groundspeed = htobe16(groundspeed);
+  crsfGps.heading = htobe16(heading);   //TODO: heading seems to not display in EdgeTX correctly, some kind of overflow error
+  crsfGps.altitude = htobe16((uint16_t)(altitude + 1000));
+  crsfGps.satellites = (uint8_t)(satellites);
+  crsf.queuePacket(CRSF_SYNC_BYTE, CRSF_FRAMETYPE_GPS, &crsfGps, sizeof(crsfGps));
+}
+
+void printGNSS(void)
+{
+  static uint16_t i=0;
+
+    snprintf(stringBuffer, STRING_BUFFER_SIZE, "%02d  : ", i);
+    GNSSSerialDebug.print(stringBuffer);
+    i++;i%=100;
+
+    uint8_t FixType=myGNSS.getFixType();
+    GNSSSerialDebug.print(F(" Fix Type: "));
+    GNSSSerialDebug.print(FixType); // 0 = No Fix, 2 = 2D Fix, 3 = 3D Fix 
+
+    uint8_t NumSat=myGNSS.getSIV();
+    GNSSSerialDebug.print(F(" Sats: "));
+    snprintf(stringBuffer, STRING_BUFFER_SIZE, "%2d", NumSat);
+    GNSSSerialDebug.print(stringBuffer); 
+    
+    int32_t latitude = myGNSS.getLatitude();
+    GNSSSerialDebug.print(F(" Lat: "));
+    GNSSSerialDebug.print(latitude);
+
+    int32_t longitude = myGNSS.getLongitude();
+    GNSSSerialDebug.print(F(" Lon: "));
+    GNSSSerialDebug.print(longitude);
+    GNSSSerialDebug.print(F(" (degrees * 10^-7)"));
+
+    int32_t altitude = myGNSS.getAltitudeMSL(); // Altitude above Mean Sea Level
+    GNSSSerialDebug.print(F(" Alt: "));
+    GNSSSerialDebug.print(altitude);
+    GNSSSerialDebug.print(F(" (mm)"));
+
+    uint32_t GroundSpeed=myGNSS.getGroundSpeed();
+    GNSSSerialDebug.print(F(" Speed: "));
+    snprintf(stringBuffer, STRING_BUFFER_SIZE, "%5d", GroundSpeed);
+    GNSSSerialDebug.print(stringBuffer);
+    GNSSSerialDebug.print(F(" (mm/s)"));
+
+    int32_t Heading=myGNSS.getHeading();
+    GNSSSerialDebug.print(F(" Heading: "));
+    snprintf(stringBuffer, STRING_BUFFER_SIZE, "%8d", Heading);
+    GNSSSerialDebug.print(stringBuffer);
+    GNSSSerialDebug.print(F(" (degrees * 10^-5)"));  
+/*
+    uint16_t G_year = myGNSS.getYear();
+    uint8_t G_month = myGNSS.getMonth();
+    uint8_t G_day = myGNSS.getDay();
+    uint8_t G_hour = myGNSS.getHour();
+    uint8_t G_minute =myGNSS.getMinute();
+    uint8_t G_second = myGNSS.getSecond();
+    uint16_t G_millis =myGNSS.getMillisecond();
+*/
+    GNSSSerialDebug.println();
+}
+
 #endif  // TARGET_BLUEPILL  and BMP280 sensor
 
 #ifdef TARGET_MATEK_CRSF_PWM_V10  // with SPL06-001 sensor
@@ -258,6 +403,11 @@ void setupBaroSensor(){   // SPL06-001 sensor version
                           SPL06::RATE_X16,
                           SPL06::RATE_X16);
   SerialI2CDebug.println("SPL06-001 ready");
+}
+
+
+bool autoBaudGNSS(void){
+   return(false);
 }
 #endif  // TARGET_MATEK_CRSF_PWM_V10 with SPL06-001
 
