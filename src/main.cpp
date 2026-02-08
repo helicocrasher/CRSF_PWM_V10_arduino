@@ -76,7 +76,6 @@ void setup() {
 //  while (!Serial) ; // wait for serial port to connect. Needed for native USB
   #endif
   SerialI2CDebug.println("Setup Baro Sensor starting");
-  while (true);
   delay(100);    
   setupBaroSensor();
   delay(100);
