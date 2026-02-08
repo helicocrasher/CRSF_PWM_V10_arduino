@@ -35,8 +35,12 @@ void printChannels();
   #define SerialDebug Serial2
 //  #define SerialI2CDebug NullSerial  
   #define SerialI2CDebug Serial2
-  #define GNSSSerialDebug NullSerial
-
+  #define GNSSSerialDebug Serial2
+#ifdef Serial 
+  #undef Serial
+  #define Serial SerialDebug
+#endif 
+ 
   #define gnssSerial Serial3
 
   #define GNSS_SERIAL Serial3
@@ -81,7 +85,7 @@ void setup() {
   pinMode(LED_BUILTIN, OUTPUT);
   digitalWrite(LED_BUILTIN, LOW);
   #ifdef TARGET_BLUEPILL
-//  while (!Serial) ; // wait for serial port to connect. Needed for native USB
+  while (!Serial) ; // wait for serial port to connect. Needed for native USB
   #endif
   SerialI2CDebug.println("Setup Baro Sensor starting");
   delay(100);    
@@ -100,7 +104,7 @@ void setup() {
     myGNSS.setMeasurementRate(250);     // Set the GNSS module to 1 second (1000 ms) measurement rate
     myGNSS.saveConfiguration();
     myGNSS.setAutoPVT(true);            // Enable automatic PVT data messages
-//    myGNSS.enableDebugging();           // Uncomment this line to enable helpful debug messages on Serial
+    myGNSS.enableDebugging();           // Uncomment this line to enable helpful debug messages on Serial
     myGNSS.setUART1Output(COM_TYPE_UBX); //Set the UART1 port to output UBX only (turn off NMEA noise)
   }
   #endif
@@ -126,7 +130,7 @@ void loop() {
 static uint32_t millis_now=0, millis_last=0,main_loop_counter=0,crsf_last_update=0;
 
   millis_now = millis();
-  if(millis_now - millis_last >= 500){  // every 500ms{
+  if(millis_now - millis_last >= 250){  // every 250ms
     millis_last = millis_now;
     digitalWrite(LED_BUILTIN, !digitalRead(LED_BUILTIN));
     printChannels();
@@ -140,10 +144,10 @@ static uint32_t millis_now=0, millis_last=0,main_loop_counter=0,crsf_last_update
     }
 #endif
   }
-//  baroProcessingTask(millis_now);
-//  baroSerialDisplayTask(millis_now);
+  baroProcessingTask(millis_now);
+  baroSerialDisplayTask(millis_now);
 
-  if (millis_now-crsf_last_update > 100){
+  if (millis_now-crsf_last_update > 10){
 #ifdef TARGET_BLUEPILL
     if(GNSS_available) myGNSS.getPVT();
     crsf_last_update = millis_now;
@@ -154,7 +158,7 @@ static uint32_t millis_now=0, millis_last=0,main_loop_counter=0,crsf_last_update
     setPWMChannels();
 
   }
-
+  delay(1);  // just to avoid a tight loop, not really needed
   main_loop_counter++;
 }
 
@@ -176,7 +180,7 @@ void printChannels() {
 
 void baroSerialDisplayTask(uint32_t millis_now){
   static uint32_t last_millis=0;
-  if (millis_now - last_millis < 2500) return;
+  if (millis_now - last_millis < 250) return;
   last_millis = millis_now;
   SerialI2CDebug.print(F("Temperature = "));
   SerialI2CDebug.print(BaroSensor.readTemperature());
