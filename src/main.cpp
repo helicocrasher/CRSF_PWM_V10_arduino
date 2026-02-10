@@ -49,7 +49,7 @@ char stringBuffer[STRING_BUFFER_SIZE]={0};
   void printGNSS(void);
   bool GNSS_available=false;
   #define mmsTokmh 278          // conversion factor from mm/s to km/h
-  #define NR_OF_PWM_OUT 8
+  #define NR_OF_PWM_OUT 10
 #endif  // TARGET_BLUEPILL and BMP280 sensor
 
 #ifdef TARGET_MATEK_CRSF_PWM_V10        // TARGET_MATEK_CRSF_PWM_V10 with SPL06-001

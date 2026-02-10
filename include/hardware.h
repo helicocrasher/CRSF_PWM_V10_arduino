@@ -13,7 +13,7 @@
   #define SERIAL3_TX PB10
   #define SERIAL3_RX PB11
 
-  uint32_t PWM_Tim_Pin_Map[10] = {PA0,PA1,PA6,PA7_ALT1,PB0_ALT1,PB1_ALT1,PA8,PA9,PA10,PB8}; // PA11 did not work so PB8 used instead Timer4 channel 3 compromising I2C1 SCL pin
+  uint32_t PWM_Tim_Pin_Map[10] = {PA0,PA1,PA6,PA7_ALT1,PB0_ALT1,PB1_ALT1,PA8,PA9,PA10,PA11}; // PA11 TIM1_CH4 does not work for some reason.. leaves us with only 9 usable PWM outputs 
   #define SDA1 PB9
   #define SCL1 PB8
 
